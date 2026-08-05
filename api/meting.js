@@ -1,17 +1,14 @@
 /**
- * Meting API · Vercel Serverless Function
+ * Meting API · Vercel Serverless Function（Edge Runtime）
  * 自建网易云音乐 Meting 兼容 API，自带 CORS。
  *
- * 路由（Vercel 把 /api/meting 映射到本文件）：
- *   /api/meting?server=netease&type=playlist&id=<歌单ID>
- *   /api/meting?server=netease&type=song&id=<歌曲ID>
- *   /api/meting?server=netease&type=search&id=<关键词>
- *   /api/meting?server=netease&type=url&id=<歌曲ID>      → 302 到 mp3
- *   /api/meting?server=netease&type=pic&id=<图片完整URL>  → 302 到图片
- *   /api/meting?server=netease&type=lrc&id=<歌曲ID>      → 歌词文本
+ * 路由：/api/meting?server=netease&type=<type>&id=<id>
+ *   playlist / song / search → JSON
+ *   url       → 302 到 mp3
+ *   pic       → 302 到图片
+ *   lrc       → 歌词文本
  *
- * 本地调试：npx vercel dev
- * 部署：    npx vercel --prod   或   在 vercel.com 导入本仓库
+ * 部署：vercel.com 导入本仓库
  */
 
 const NETEASE = {
@@ -30,13 +27,14 @@ const CORS = {
   'Access-Control-Max-Age': '86400',
 };
 
-const CACHE_HEADERS = {
+const JSON_HEADERS = {
+  'Content-Type': 'application/json; charset=utf-8',
   ...CORS,
   'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=86400',
 };
 
-function json(res, data, status = 200) {
-  return res.status(status).set(CACHE_HEADERS).json(data);
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
 async function neteaseFetch(url) {
@@ -56,14 +54,12 @@ function parseSong(s) {
   if (!s) return null;
   const artists = (s.artists || s.ar || []).map((a) => a.name).filter(Boolean);
   const album = s.album || s.al || {};
-  // picUrl 是完整图片地址，统一升级 https
   const picUrl = (album.picUrl || album.img || '').replace(/^http:\/\//, 'https://');
   return {
     id: s.id || s.songid,
     name: s.name,
     artist: artists.join(' / ') || '未知歌手',
     album: album.name || '',
-    // url/lrc 指回本 API，由本服务 302 跳转，保持 Meting 标准结构
     url: `/api/meting?type=url&id=${s.id}`,
     pic: picUrl || '',
     lrc: `/api/meting?type=lrc&id=${s.id}`,
@@ -72,8 +68,7 @@ function parseSong(s) {
 
 async function getPlaylist(id) {
   const data = await neteaseFetch(NETEASE.playlist + encodeURIComponent(id));
-  const tracks = (data.result && data.result.tracks) || [];
-  return tracks.map(parseSong).filter(Boolean);
+  return (data.result?.tracks || []).map(parseSong).filter(Boolean);
 }
 
 async function getSong(id) {
@@ -85,27 +80,29 @@ async function searchSongs(keyword) {
   const data = await neteaseFetch(
     NETEASE.search + encodeURIComponent(keyword) + '&type=1&offset=0&limit=20'
   );
-  return ((data.result && data.result.songs) || []).map(parseSong).filter(Boolean);
+  return (data.result?.songs || []).map(parseSong).filter(Boolean);
 }
 
-export default async function handler(req, res) {
+export default async function handler(req) {
+  const url = new URL(req.url);
+
   // CORS 预检
   if (req.method === 'OPTIONS') {
-    res.status(204).set(CORS).end();
-    return;
+    return new Response(null, { status: 204, headers: CORS });
   }
   if (req.method !== 'GET') {
-    res.status(405).set(CORS).end();
-    return;
+    return new Response('Method Not Allowed', { status: 405, headers: CORS });
   }
 
-  const { type = '', id = '', server = 'netease' } = req.query;
+  const type = (url.searchParams.get('type') || '').toLowerCase();
+  const id = url.searchParams.get('id') || '';
+  const server = (url.searchParams.get('server') || 'netease').toLowerCase();
 
   if (server !== 'netease') {
-    return json(res, { error: '目前仅支持 server=netease' }, 400);
+    return jsonResponse({ error: '目前仅支持 server=netease' }, 400);
   }
   if (!type || !id) {
-    return json(res, {
+    return jsonResponse({
       usage: {
         playlist: '/api/meting?server=netease&type=playlist&id=<歌单ID>',
         song: '/api/meting?server=netease&type=song&id=<歌曲ID>',
@@ -118,43 +115,37 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 302 跳转类
     if (type === 'url') {
-      res
-        .status(302)
-        .set({ ...CORS, Location: NETEASE.outerUrl(id), 'Cache-Control': 'public, s-maxage=86400' })
-        .end();
-      return;
+      return Response.redirect(NETEASE.outerUrl(id), 302);
     }
     if (type === 'pic') {
-      // pic 入参直接是完整图片 URL（parseSong 已提供）
-      const target = /^https?:\/\//i.test(id) ? id.replace(/^http:\/\//, 'https://') : `https://p1.music.126.net/${id}`;
-      res
-        .status(302)
-        .set({ ...CORS, Location: target, 'Cache-Control': 'public, s-maxage=604800' })
-        .end();
-      return;
+      const target = /^https?:\/\//i.test(id)
+        ? id.replace(/^http:\/\//, 'https://')
+        : `https://p1.music.126.net/${id}`;
+      return Response.redirect(target, 302);
     }
     if (type === 'lrc') {
       const data = await neteaseFetch(NETEASE.lyric(id));
-      const lrc = (data.lrc && data.lrc.lyric) || '';
-      res
-        .status(200)
-        .set({ ...CORS, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, s-maxage=86400' })
-        .send(lrc);
-      return;
+      const lrc = data.lrc?.lyric || '';
+      return new Response(lrc, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          ...CORS,
+          'Cache-Control': 'public, s-maxage=86400',
+        },
+      });
     }
 
-    // JSON 类
     let result;
     if (type === 'playlist') result = await getPlaylist(id);
     else if (type === 'song') result = await getSong(id);
     else if (type === 'search') result = await searchSongs(id);
-    else return json(res, { error: '未知 type: ' + type }, 400);
+    else return jsonResponse({ error: '未知 type: ' + type }, 400);
 
-    return json(res, result);
+    return jsonResponse(result);
   } catch (err) {
     console.error('[meting-api]', err);
-    return json(res, { error: String(err && err.message || err) }, 502);
+    return jsonResponse({ error: String(err?.message || err) }, 502);
   }
 }
