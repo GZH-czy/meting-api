@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/meting.js": {
+      "memory": 128,
+      "maxDuration": 10
+    }
+  }
+}

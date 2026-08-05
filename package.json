@@ -1,0 +1,10 @@
+{
+  "name": "meting-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted Meting-compatible API for NetEase Cloud Music on Vercel",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  }
+}
