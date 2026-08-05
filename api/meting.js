@@ -36,7 +36,10 @@ function jsonResponse(data, status = 200) {
 }
 
 async function neteaseFetch(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
   const r = await fetch(url, {
+    signal: ctrl.signal,
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -44,6 +47,7 @@ async function neteaseFetch(url) {
       Referer: 'https://music.163.com/',
     },
   });
+  clearTimeout(timer);
   if (!r.ok) throw new Error('网易云 API HTTP ' + r.status);
   return r.json();
 }
