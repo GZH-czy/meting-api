@@ -1,13 +1,13 @@
 /**
- * Meting API · Vercel Serverless Function
+ * Meting API · Vercel Edge Function
  * 自建网易云音乐 Meting 兼容 API，自带 CORS。
  *
- * 路由：/api/meting?server=netease&type=<type>&id=<id>
- *   playlist / song / search → JSON
- *   url       → 302 到 mp3
- *   pic       → 302 到图片
- *   lrc       → 歌词文本
+ * Edge Runtime 节点离网易云更近，不易超时。
  */
+
+export const config = {
+  runtime: 'edge',
+};
 
 const NETEASE = {
   playlist: 'https://music.163.com/api/playlist/detail?id=',
@@ -85,43 +85,38 @@ async function searchSongs(keyword) {
   return (data.result?.songs || []).map(parseSong).filter(Boolean);
 }
 
-export default async function handler(req, res) {
+export default async function handler(request) {
+  const url = new URL(request.url);
+
+  // CORS 预检
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS });
+  }
+  if (request.method !== 'GET') {
+    return new Response('Method Not Allowed', { status: 405, headers: CORS });
+  }
+
+  const type = (url.searchParams.get('type') || '').toLowerCase();
+  const id = url.searchParams.get('id') || '';
+  const server = (url.searchParams.get('server') || 'netease').toLowerCase();
+
+  if (server !== 'netease') {
+    return jsonResponse({ error: '目前仅支持 server=netease' }, 400);
+  }
+  if (!type || !id) {
+    return jsonResponse({
+      usage: {
+        playlist: '/api/meting?server=netease&type=playlist&id=<歌单ID>',
+        song: '/api/meting?server=netease&type=song&id=<歌曲ID>',
+        search: '/api/meting?server=netease&type=search&id=<关键词>',
+        url: '/api/meting?server=netease&type=url&id=<歌曲ID>',
+        pic: '/api/meting?server=netease&type=pic&id=<图片完整URL>',
+        lrc: '/api/meting?server=netease&type=lrc&id=<歌曲ID>',
+      },
+    });
+  }
+
   try {
-    // 从 res 或 req 中获取完整 URL（兼容两种 Vercel 运行时）
-    const fullUrl = res?.url || req?.url || '';
-    const base = (req?.headers?.host)
-      ? `${req?.headers?.['x-forwarded-proto'] || 'https'}://${req.headers.host}`
-      : 'http://localhost:3000';
-    const url = new URL(fullUrl, base);
-
-    // CORS 预检
-    if (req.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS });
-    }
-    if (req.method !== 'GET') {
-      return new Response('Method Not Allowed', { status: 405, headers: CORS });
-    }
-
-    const type = (url.searchParams.get('type') || '').toLowerCase();
-    const id = url.searchParams.get('id') || '';
-    const server = (url.searchParams.get('server') || 'netease').toLowerCase();
-
-    if (server !== 'netease') {
-      return jsonResponse({ error: '目前仅支持 server=netease' }, 400);
-    }
-    if (!type || !id) {
-      return jsonResponse({
-        usage: {
-          playlist: '/api/meting?server=netease&type=playlist&id=<歌单ID>',
-          song: '/api/meting?server=netease&type=song&id=<歌曲ID>',
-          search: '/api/meting?server=netease&type=search&id=<关键词>',
-          url: '/api/meting?server=netease&type=url&id=<歌曲ID>',
-          pic: '/api/meting?server=netease&type=pic&id=<图片完整URL>',
-          lrc: '/api/meting?server=netease&type=lrc&id=<歌曲ID>',
-        },
-      });
-    }
-
     if (type === 'url') {
       return Response.redirect(NETEASE.outerUrl(id), 302);
     }
@@ -156,7 +151,3 @@ export default async function handler(req, res) {
     return jsonResponse({ error: String(err?.message || err) }, 502);
   }
 }
-
-export const config = {
-  runtime: 'nodejs',
-};
