@@ -1,5 +1,5 @@
 /**
- * Meting API · Vercel Serverless Function（Edge Runtime）
+ * Meting API · Vercel Serverless Function（Node.js Runtime）
  * 自建网易云音乐 Meting 兼容 API，自带 CORS。
  *
  * 路由：/api/meting?server=netease&type=<type>&id=<id>
@@ -149,3 +149,7 @@ export default async function handler(req) {
     return jsonResponse({ error: String(err?.message || err) }, 502);
   }
 }
+
+export const config = {
+  runtime: 'nodejs',
+};
