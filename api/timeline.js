@@ -30,25 +30,50 @@ function jsonResponse(data, status = 200) {
 function parseButterflyTimeline(html) {
   const items = [];
 
-  // 匹配每个 timeline-item 块（含 headline）
-  // 格式：<div class='timeline-item...'>...<div class='item-circle'><p>日期</p></div>...<div class='timeline-item-content'><p>内容</p></div>...</div>
-  const itemRegex = /<div\s+class=['"][^'"]*timeline-item[^'"]*['"][^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
-  let match;
+  // 提取所有日期（item-circle）和内容（timeline-item-content）
+  const dates = [];
+  const contents = [];
 
-  while ((match = itemRegex.exec(html)) !== null) {
-    const block = match[1];
+  const dateRegex = /class=['"][^'"]*item-circle['"][^>]*>([\s\S]*?)<\/div>/gi;
+  let dm;
+  while ((dm = dateRegex.exec(html)) !== null) {
+    dates.push(stripTags(dm[1]).trim());
+  }
 
-    // 提取日期（item-circle 里的文本）
-    const dateMatch = block.match(/class=['"][^'"]*item-circle['"][^>]*>([\s\S]*?)<\/div>/i);
-    const date = dateMatch ? stripTags(dateMatch[1]).trim() : '';
+  const contentRegex = /class=['"][^'"]*timeline-item-content['"][^>]*>([\s\S]*?)<\/div>/gi;
+  let cm;
+  while ((cm = contentRegex.exec(html)) !== null) {
+    const text = stripTags(cm[1]).trim();
+    if (text) contents.push(text);
+  }
 
-    // 提取内容（timeline-item-content 里的文本）
-    const contentMatch = block.match(/class=['"][^'"]*timeline-item-content['"][^>]*>([\s\S]*?)<\/div>/i);
-    const content = contentMatch ? stripTags(contentMatch[1]).trim() : '';
+  // 按位置配对（内容前最近的日期）
+  // 简单策略：遍历 dates，如果后面有 content 就配对
+  // 由于 headline 年份没有对应 content，需要跳过
+  const contentPositions = [];
+  const cpRegex = /class=['"][^'"]*timeline-item-content['"][^>]*>([\s\S]*?)<\/div>/gi;
+  let cp;
+  while ((cp = cpRegex.exec(html)) !== null) {
+    contentPositions.push({ start: cp.index, text: stripTags(cp[1]).trim() });
+  }
 
-    if (content) {
-      items.push({ date, content, tag: '博客' });
+  // 找每个 content 前面最近的 date
+  for (const cp of contentPositions) {
+    if (!cp.text) continue;
+    let nearestDate = '';
+    let nearestDist = Infinity;
+    const dRegex = /class=['"][^'"]*item-circle['"][^>]*>([\s\S]*?)<\/div>/gi;
+    let d;
+    while ((d = dRegex.exec(html)) !== null) {
+      const dateText = stripTags(d[1]).trim();
+      if (!dateText) continue;
+      const dist = cp.start - d.index;
+      if (dist > 0 && dist < nearestDist) {
+        nearestDist = dist;
+        nearestDate = dateText;
+      }
     }
+    items.push({ date: nearestDate, content: cp.text, tag: '博客' });
   }
 
   return items;
