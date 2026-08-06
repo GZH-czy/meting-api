@@ -30,20 +30,40 @@ function jsonResponse(data, status = 200) {
 function parseButterflyTimeline(html) {
   const items = [];
 
-  // 匹配每个 timeline-item（headline 和普通条目）
-  // 格式：<div class='timeline-item'><div class='timeline-item-title'><div class='item-circle'><p>日期</p></div></div><div class='timeline-item-content'><p>内容</p></div></div>
-  const itemRegex = /<div\s+class=['"](?:timeline-item[^'"]*|[^'"]*timeline-item)['"][^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
-  let match;
+  // 用 indexOf 找到每个 timeline-item 的起始位置，手动解析
+  let searchFrom = 0;
+  while (true) {
+    // 找 <div class="timeline-item ..."> 或 <div class='timeline-item ...'>
+    const startMatch = html.match(/<div\s+class=['"][^'"]*timeline-item[^'"]*['"][^>]*>/i);
+    if (!startMatch) break;
+    const startIdx = html.indexOf(startMatch[0], searchFrom);
+    if (startIdx === -1) break;
 
-  while ((match = itemRegex.exec(html)) !== null) {
-    const block = match[1];
+    // 找对应的结束标签（简单计数法）
+    const afterStart = startIdx + startMatch[0].length;
+    let depth = 1;
+    let pos = afterStart;
+    while (depth > 0 && pos < html.length) {
+      const nextOpen = html.indexOf('<div', pos);
+      const nextClose = html.indexOf('</div>', pos);
+      if (nextClose === -1) break;
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth++;
+        pos = nextOpen + 4;
+      } else {
+        depth--;
+        pos = nextClose + 6;
+      }
+    }
+    const block = html.substring(afterStart, pos - 6);
+    searchFrom = pos;
 
-    // 提取日期（item-circle 里的文本，可能有 <p> 包裹）
-    const dateMatch = block.match(/class=['"][^'"]*item-circle['"][^>]*>([\s\S]*?)<\/div>/);
+    // 提取日期（item-circle 里的文本）
+    const dateMatch = block.match(/class=['"][^'"]*item-circle['"][^>]*>([\s\S]*?)<\/div>/i);
     const date = dateMatch ? stripTags(dateMatch[1]).trim() : '';
 
     // 提取内容（timeline-item-content 里的文本）
-    const contentMatch = block.match(/class=['"][^'"]*timeline-item-content['"][^>]*>([\s\S]*?)<\/div>/);
+    const contentMatch = block.match(/class=['"][^'"]*timeline-item-content['"][^>]*>([\s\S]*?)<\/div>/i);
     const content = contentMatch ? stripTags(contentMatch[1]).trim() : '';
 
     if (content) {
