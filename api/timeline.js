@@ -29,40 +29,25 @@ function jsonResponse(data, status = 200) {
 // 解析 Butterfly 主题时间轴 HTML
 function parseButterflyTimeline(html) {
   const items = [];
-  // Butterfly timeline 格式：
-  // <div class="timeline-item headline">...<div class="timeline-item-title"><div class="item-circle">日期</div></div>...
-  // 或者 <div class="timeline-item"><div class="timeline-item-title"><div class="item-circle">日期</div></div><div class="timeline-item-content">内容</div></div>
 
-  // 匹配 timeline-item
-  const itemRegex = /<div[^>]*class=['"][^'"]*timeline-item[^'"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/g;
+  // 匹配每个 timeline-item（headline 和普通条目）
+  // 格式：<div class='timeline-item'><div class='timeline-item-title'><div class='item-circle'><p>日期</p></div></div><div class='timeline-item-content'><p>内容</p></div></div>
+  const itemRegex = /<div\s+class=['"](?:timeline-item[^'"]*|[^'"]*timeline-item)['"][^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
   let match;
 
   while ((match = itemRegex.exec(html)) !== null) {
     const block = match[1];
 
-    // 提取日期（item-circle 里的内容）
-    const dateMatch = block.match(/<div[^>]*class=['"][^'"]*item-circle[^'"]*"[^>]*>([\s\S]*?)<\/div>/);
+    // 提取日期（item-circle 里的文本，可能有 <p> 包裹）
+    const dateMatch = block.match(/class=['"][^'"]*item-circle['"][^>]*>([\s\S]*?)<\/div>/);
     const date = dateMatch ? stripTags(dateMatch[1]).trim() : '';
 
-    // 提取内容（timeline-item-content 里的内容）
-    const contentMatch = block.match(/<div[^>]*class=['"][^'"]*timeline-item-content[^'"]*"[^>]*>([\s\S]*?)<\/div>/);
+    // 提取内容（timeline-item-content 里的文本）
+    const contentMatch = block.match(/class=['"][^'"]*timeline-item-content['"][^>]*>([\s\S]*?)<\/div>/);
     const content = contentMatch ? stripTags(contentMatch[1]).trim() : '';
 
     if (content) {
       items.push({ date, content, tag: '博客' });
-    }
-  }
-
-  // 如果没匹配到，尝试另一种常见格式
-  if (items.length === 0) {
-    const altRegex = /<div[^>]*class=['"][^'"]*timeline[^'"]*"[^>]*>([\s\S]*?)<\/div>/g;
-    while ((match = altRegex.exec(html)) !== null) {
-      const block = match[1];
-      // 尝试找日期和内容
-      const lines = block.split(/<br\s*\/?>|\n/).map(l => stripTags(l).trim()).filter(Boolean);
-      if (lines.length >= 2) {
-        items.push({ date: lines[0], content: lines.slice(1).join(' '), tag: '博客' });
-      }
     }
   }
 
