@@ -60,11 +60,13 @@ function parseSong(s) {
   const album = s.album || s.al || {};
   const picUrl = (album.picUrl || album.img || '').replace(/^http:\/\//, 'https://');
   return {
-    title: s.name,
-    author: artists.join(' / ') || '未知歌手',
-    url: `${API_BASE}/api?server=netease&type=url&id=${s.id}`,
+    id: s.id || s.songid,
+    name: s.name,
+    artist: artists.join(' / ') || '未知歌手',
+    album: album.name || '',
+    url: `${API_BASE}/api/meting?type=url&id=${s.id}`,
     pic: picUrl || '',
-    lrc: `${API_BASE}/api?server=netease&type=lrc&id=${s.id}`,
+    lrc: `${API_BASE}/api/meting?type=lrc&id=${s.id}`,
   };
 }
 
