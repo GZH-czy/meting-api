@@ -52,6 +52,8 @@ async function neteaseFetch(url) {
   return r.json();
 }
 
+const API_BASE = 'https://meting-api.gzh-czy.cc.cd';
+
 function parseSong(s) {
   if (!s) return null;
   const artists = (s.artists || s.ar || []).map((a) => a.name).filter(Boolean);
@@ -62,9 +64,9 @@ function parseSong(s) {
     name: s.name,
     artist: artists.join(' / ') || '未知歌手',
     album: album.name || '',
-    url: `/api/meting?type=url&id=${s.id}`,
+    url: `${API_BASE}/api/meting?type=url&id=${s.id}`,
     pic: picUrl || '',
-    lrc: `/api/meting?type=lrc&id=${s.id}`,
+    lrc: `${API_BASE}/api/meting?type=lrc&id=${s.id}`,
   };
 }
 
